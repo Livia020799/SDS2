@@ -13,7 +13,7 @@ This repository contains the details of the final project component of the cours
 ### **Project Overview**
 
 From ***SMDS-2-Final-Project-Guidelines.PDF*** uploaded in this GitHub repository you can see the project guidelines. <br>
-My project... #TO DO
+My project... **#TO DO**
 
 
 -------------------------------------------------------------------------------------------------------------------------------------
