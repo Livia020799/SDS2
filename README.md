@@ -1,4 +1,4 @@
-# SDS2
+# Statistical Methods in Data Science & Laboratory II
 This repository hosts the final project (***``***) for Statistical Methods in Data Science & Laboratory II exam, held by Professor Luca Tradella, as part of the Master’s degree in Data Science at Sapienza University of Rome.
 
 -------------------------------------------------------------------------------------------------------------------------------------
