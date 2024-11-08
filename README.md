@@ -14,6 +14,8 @@ This repository contains the details of the final project component of the cours
 
 From ***SMDS-2-Final-Project-Guidelines.PDF*** uploaded in this GitHub repository you can see the project guidelines. <br>
 
+![image](https://github.com/user-attachments/assets/e5f4f5b7-a6d6-4ce2-b3f5-06f589206fb4)
+
 The project investigates the influence of community dynamics and social norms on crime rates. By examining factors such as socio-economic stability, family structure, and public assistance, it aims to reveal how collective community behaviors affect criminal activity. Using the **Communities and Crime** dataset from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/183/communities+and+crime), the study explores these variables, focusing on **Per Capita Violent Crimes** as the target. The data was preprocessed to ensure consistency, with normalization applied to align variable distributions.
 
 The analysis employed both Bayesian and frequentist approaches:
