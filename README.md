@@ -1,5 +1,5 @@
 # Statistical Methods in Data Science & Laboratory II
-This repository hosts the final project (***`SDS2_final_prohject---JAGS`***) for Statistical Methods in Data Science & Laboratory II exam, held by Professor Luca Tradella, as part of the Master’s degree in Data Science at Sapienza University of Rome.
+This repository hosts the final project (***`SDS2_final_project - JAGS`***) for Statistical Methods in Data Science & Laboratory II exam, held by Professor Luca Tradella, as part of the Master’s degree in Data Science at Sapienza University of Rome.
 
 -------------------------------------------------------------------------------------------------------------------------------------
 
