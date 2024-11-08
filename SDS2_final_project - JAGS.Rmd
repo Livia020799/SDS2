@@ -1,0 +1,2094 @@
+---
+title: "Influence of Social Norms and Community Interactions on Crime Rates: A Statistical Exploration"
+author: "Oddi Livia"
+date: "2024-11-07"
+
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: false
+    theme: paper
+    highlight: tango
+    df_print: paged
+  word_document: default
+  pdf_document: default
+urlcolor: magenta
+linkcolor: cyan
+geometry: margin=1.25cm
+fontsize: 12pt
+header-includes:
+- \usepackage{bbold}
+- \usepackage{mdframed, xcolor}
+- \usepackage{graphicx}
+- \mdfsetup{frametitlealignment=\center}
+- \usepackage{multirow}
+- \definecolor{shadecolor}{rgb}{0.89,0.8,1}
+- \newcommand{\Prob}{\mathbb{P}}
+- \newcommand{\Exp}{\mathbb{E}}
+- \newcommand{\Var}{\mathbb{V}\mathrm{ar}}
+- \newcommand{\Cov}{\mathbb{C}\mathrm{ov}}
+- \newcommand{\blue}{\textcolor{blue}}
+- \newcommand{\darkgreen}{\textcolor[rgb]{0,.5,0}}
+- \newcommand{\gray}{\textcolor[rgb]{.3,.3,.3}}
+- \newcommand{\blueA}{\textcolor[rgb]{0,.1,.4}}
+- \newcommand{\blueB}{\textcolor[rgb]{0,.3,.6}}
+- \newcommand{\blueC}{\textcolor[rgb]{0,.5,.8}}
+- \newcommand{\evidenzia}{\textcolor[rgb]{0,0,0}}
+- \newcommand{\nero}{\textcolor[rgb]{0,0,0}}
+- \newcommand{\darkyel}{\textcolor[rgb]{.4,.4,0}}
+- \newcommand{\darkred}{\textcolor[rgb]{.6,0,0}}
+- \newcommand{\blueDek}{\textcolor[rgb]{0.6000000, 0.7490196, 0.9019608}}
+- \newcommand{\purpLarry}{\textcolor[rgb]{0.6901961, 0.2431373, 0.4784314}}
+- \newcommand{\lightgray}{\textcolor[rgb]{.8,.8,.8}}
+- \newcommand{\bfun}{\left\{\begin{array}{ll}}
+- \newcommand{\efun}{\end{array}\right.}
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+### Introduction
+
+This project aims to explore how social norms and community interactions
+influence crime rates. By examining the social fabric and relational
+dynamics within communities, we gain deeper insights into crime that go
+beyond environmental or individual factors.<br> Focusing on the
+sociological perspective, this study investigates the relationship
+between community cohesion, social norms, and crime rates, highlighting
+the impact of social structures and collective behaviors on criminal
+activity.
+
+#### **Objective**
+
+The primary objective is to explore the connections between community
+cohesion and crime dynamics. This involves analyzing how variations in
+community cohesion correlate with crime rates and how social structures
+within communities contribute to these patterns. The study aims to use a
+Bayesian Hierarchical Model to account for different levels of social
+interactions, from individual to community-wide scales, to better
+understand these relationships.
+
+#### **Dataset**
+
+The crime dataset used in this project is obtained from the [UCI Machine
+Learning
+Repository](https://archive.ics.uci.edu/dataset/183/communities+and+crime),
+specifically the *Communities and Crime* dataset. This dataset is
+fetched using Python as per the provided instructions on the UCI website
+and then uploaded to a platform suitable for analysis in R.
+
+The dataset contains 128 variables chosen for their potential link to
+crime, including community characteristics and law enforcement metrics,
+and includes the following types of data:
+
+-   ***Social Cohesion Indicators*** : Data on community engagement,
+    participation in local events, sense of community, and social trust
+    derived from surveys.
+
+-   ***Socio-economic Data*** : Information on income distribution,
+    educational attainment, and employment rates within communities.
+
+-   ***Crime Statistics*** : Detailed crime reports categorized by type
+    and intensity, including data on locations and times
+
+The target variable, *`Per Capita Violent Crimes`*, was calculated using
+population data and the sum of violent crimes (murder, rape, robbery,
+and assault). Due to inconsistencies in rape counts, some cities, mainly
+from the Midwestern USA, were excluded. All numeric data were normalized
+to a 0.00-1.00 range using an unsupervised, equal-interval binning
+method, preserving the distribution and skew of each attribute but not
+the relationships between different attributes. Extreme values more than
+3 standard deviations from the mean were capped at 1.00 or 0.00.
+
+Due to time and memory constraints, the following variables were
+selected for this project:
+
+-   ***Social Cohesion Indicators*** *Teen_2Par,YoungKids_2Par,
+    Families_2Parents, Large_Families, Working_mom, Illegitimate_Births*
+
+-   ***Socio-economic Data*** *Median_Income, Employed, Unemployed,
+    Below_Poverty, Degree_BS_Or_More, Inc_from_inv, Poor_English,
+    Welfare_Public_Assist*
+
+### Exploratory Data Analysis
+
+The initial step of this project involved performing Exploratory Data
+Analysis (EDA) to understand the structure and distribution of the data,
+identify patterns, and detect any anomalies or outliers. This analysis
+provided valuable insights and helped in making informed decisions for
+data preprocessing and model building.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#Libraries
+library(clubSandwich)
+library(ggplot2)
+library(corrplot)
+library(stats)
+library(brms)
+library(scales)
+library(bayesplot)
+library(e1071)
+library(reshape2)
+library(GGally)
+library(plotly)
+library(patchwork)
+library(posterior)
+library(lme4)
+library(broom.mixed)
+library(gamlss)
+library(glmmTMB)
+library(DHARMa)
+library(coda)
+library(rjags)
+```
+
+Part of the preprocessing of the dataset done in Google Colab using
+Python (`SDS2_preprocessing.ipynb`) ensured the selection of an
+appropriate number of variables and that the data was clean, consistent,
+and suitable for further analysis.<br> The resulting reduced dataset,
+which will be used for the project, includes the following variables:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data = read.csv("crime_data.csv")
+head(data,5)
+data$State = as.factor(data$State) 
+#Because the States are encoded as numbers but I need them as categorical data
+```
+
+As a first step zeros and ones were removed in both the target and other
+variables to ensure data consistency, going from 1994 observations to
+1038.<br> After this transformation *Normal Q-Q Plot* and *Residuals vs
+Fitted values* were plotted to check if the distribution meets normality
+and homoscedasticity assumptions:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data = data[!apply(data == 0 | data == 1, 1, any), ]
+
+#Let's see the residuals
+residuals_lm = lm(target ~ Employed, data = data)$residuals
+qqnorm(residuals_lm)
+qqline(residuals_lm)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Linear model
+lm_model_target <- lm(target ~ Employed, data = data)
+
+residuals_lm <- residuals(lm_model_target)
+fitted_lm <- fitted(lm_model_target)
+
+ggplot(data, aes(x = fitted_lm, y = residuals_lm)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residuals vs Fitted Values",
+       x = "Fitted Values",
+       y = "Residuals") +
+  theme_minimal()
+```
+
+The **Normal Q-Q plot** shows that residuals deviate from the reference
+line, particularly at the tails, suggesting some non-normality that
+might impact model assumptions. In the **Residuals vs. Fitted Values
+plot**, the residuals are scattered around zero, indicating general
+support for homoscedasticity, although there is slight variation across
+the fitted values. This variation could signal minor heteroscedasticity.
+
+Applying a **Box-Cox transformation** can help mitigate these issues by
+making the residuals closer to normal and stabilizing their variance.
+This transformation improves the model's overall fit and makes parameter
+estimates more reliable, potentially leading to more accurate
+predictions:
+
+$y(\lambda) =
+\begin{cases}
+\frac{y^{\lambda} - 1}{\lambda} & \text{if } \lambda \neq 0 \\
+\log(y) & \text{if } \lambda = 0
+\end{cases}$
+
+where:
+
+-   $y(\lambda)$ is the transformed variable.
+-   $y$ is the original variable (must be positive for the
+    transformation).
+-   $\lambda$ is the transformation parameter, which is typically
+    determined to maximize the normality of the data (0.26 in our case).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data$bc_target = (data$target^(0.26)-1)/0.26
+residuals_bc = lm(bc_target ~ Employed, data = data)$residuals
+qqnorm(residuals_bc, main = "Q-Q Plot of Box-Cox Transformed Residuals")
+qqline(residuals_bc)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Linear model
+lm_model <- lm(bc_target ~ Employed, data = data)
+
+residuals_bc <- residuals(lm_model)
+fitted_bc <- fitted(lm_model)
+
+ggplot(data, aes(x = fitted_bc, y = residuals_bc)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residuals vs Fitted Values of Box-Cox transformation",
+       x = "Fitted Values",
+       y = "Residuals") +
+  theme_minimal()
+```
+
+The **Normal Q-Q plot** and **Residuals vs. Fitted Values plot** after
+the Box-Cox transformation show clear improvements. In the Q-Q plot,
+residuals align more closely with the reference line, especially in the
+middle, indicating a closer-to-normal distribution. Minor deviations
+remain at the tails but are less severe than before. The Residuals vs.
+Fitted plot now shows a more consistent spread around zero, with no
+evident pattern, supporting homoscedasticity.
+
+Overall, these improvements suggest that the Box-Cox transformation has
+helped the model better meet normality and constant variance
+assumptions, enhancing its reliability and predictive robustness.
+
+Subsequentially and Boxplots were plotted for each variable to visualize
+the distribution:
+
+**Histograms**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+par(mfrow=c(2, 2))  
+
+first_half_vars = names(data[, setdiff(1:8, which(names(data) %in% c("State", "target")))])
+
+for (i in first_half_vars) {
+  hist(data[[i]], main=paste("Histogram of", i), xlab=i, col="skyblue", breaks=30, probability=TRUE)
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+par(mfrow=c(2, 2)) 
+
+second_half_vars = names(data[, setdiff(9:length(names(data)), which(names(data) %in% c("State", "target", "bc_target")))])
+
+for (i in second_half_vars) {
+  hist(data[[i]], main=paste("Histogram of", i), xlab=i, col="skyblue", breaks=30, probability=TRUE)
+}
+```
+
+**Boxplots**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(2, 2))  
+
+first_half_vars <- names(data)[1:(length(names(data)) / 2)]
+first_half_vars <- first_half_vars[!first_half_vars %in% c("State", "target")]
+
+for (i in first_half_vars) {
+  boxplot(data[[i]], xlab=i, col="darkblue", 
+          main=paste("Boxplot of", i))
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+par(mfrow=c(2, 2)) 
+
+second_half_vars <- names(data)[((length(names(data)) / 2) + 1):length(names(data))]
+second_half_vars <- second_half_vars[!second_half_vars %in% c("State", "target", "bc_target")]
+
+for (i in second_half_vars) {
+  boxplot(data[[i]], xlab=i, col="darkblue", 
+          main=paste("Boxplot of", i))
+}
+```
+
+Overall, the histograms and boxplots demonstrate significant skewness in
+several variables, like `Large_Families`, `Poor_English`,
+`Welfare_Public_Assist`, `Below_Poverty`, and `Illegitimate_Births`,
+`Speak_Eng_Only`. Applying a normalization or scaling could help reduce
+the imbalance in the distribution.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Normalize the data 
+normalize <- function(x) {
+  return ((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
+}
+
+df = data[, c("YoungKids_2Par", "Teen_2Par", "Employed", "Below_Poverty", "Degree_BS_Or_More", "Inc_from_inv", "Speak_Eng_Only", "Illegitimate_Births", "Large_Families", "Poor_English", "Families_2Parents", "Working_mom", "Median_Income", "Unemployment", "Welfare_Public_Assist")]
+
+normalized_data = as.data.frame(lapply(df, normalize))
+not_normalized_data = data[, c("State", "target", "bc_target")]
+
+data = cbind(normalized_data, not_normalized_data)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+columns_to_exclude <- c("State", "target", "bc_target")
+
+data_subset <- data[, !(names(data) %in% columns_to_exclude)]
+
+means <- apply(data_subset, 2, mean)
+sds <- apply(data_subset, 2, sd)
+
+summary_stats <- data.frame(
+  Variable = colnames(data_subset),
+  Mean = means,
+  SD = sds
+)
+
+print(summary_stats)
+```
+
+Now we can have a look at how the distribution changed after the
+normalization:
+
+**Histograms**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(2, 2))  
+
+first_half_vars = names(data[, setdiff(1:8, which(names(data) %in% c("State", "target")))])
+
+for (i in first_half_vars) {
+  hist(data[[i]], main=paste("Histogram of", i), xlab=i, col="skyblue", breaks=30, probability=TRUE)
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(2, 2)) 
+
+second_half_vars = names(data[, setdiff(9:length(names(data)), which(names(data) %in% c("State", "target", "bc_target")))])
+
+for (i in second_half_vars) {
+  hist(data[[i]], main=paste("Histogram of", i), xlab=i, col="skyblue", breaks=30, probability=TRUE)
+}
+```
+
+**Boxplots**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(2, 2))  
+
+first_half_vars <- names(data)[1:(length(names(data)) / 2)]
+first_half_vars <- first_half_vars[!first_half_vars %in% c("State", "target")]
+
+for (i in first_half_vars) {
+  boxplot(data[[i]], xlab=i, col="darkblue", 
+          main=paste("Boxplot of", i))
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+par(mfrow=c(2, 2)) 
+
+second_half_vars <- names(data)[((length(names(data)) / 2) + 1):length(names(data))]
+second_half_vars <- second_half_vars[!second_half_vars %in% c("State", "target", "bc_target")]
+
+for (i in second_half_vars) {
+  boxplot(data[[i]], xlab=i, col="darkblue", 
+          main=paste("Boxplot of", i))
+}
+```
+
+**State vs target**
+
+Then, it was helpful to also investigate the relationship between the
+`target` and the `State` variables, the categorical stratifying
+variable:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,1))
+state_mapping = c(
+  "1" = "Alabama", "2" = "Alaska", "3" = "Arizona", "4" = "Arkansas", "5" = "California", "6" = "Colorado", "7" = "Connecticut", "8" = "Delaware",
+  "9" = "Florida", "10" = "Georgia", "11" = "Hawaii", "12" = "Idaho", "13" = "Illinois", "14" = "Indiana", "15" = "Iowa", "16" = "Kansas",
+  "17" = "Kentucky", "18" = "Louisiana", "19" = "Maine", "20" = "Maryland", "21" = "Massachusetts", "22" = "Michigan", "23" = "Minnesota", "24" = "Mississippi",
+  "25" = "Missouri", "26" = "Montana", "27" = "Nebraska", "28" = "Nevada", "29" = "New Hampshire", "30" = "New Jersey", "31" = "New Mexico", "32" = "New York",
+  "33" = "North Carolina", "34" = "North Dakota", "35" = "Ohio", "36" = "Oklahoma", "37" = "Oregon", "38" = "Pennsylvania", "39" = "Rhode Island", "40" = "South Carolina",
+  "41" = "South Dakota", "42" = "Tennessee", "43" = "Texas", "44" = "Utah", "45" = "Vermont", "46" = "Virginia", "47" = "Washington", "48" = "West Virginia",
+  "49" = "Wisconsin", "50" = "Wyoming"
+)
+
+# Filter state labels to match the unique states in your data
+state_labels = state_mapping[as.character(unique(data$State))]
+
+colfunc = colorRampPalette(c("red", "orange","green"))
+colors = colfunc(100)[as.numeric(cut(data$target, breaks = 100))]
+
+plot(data$State, data$target, main = "State and Target relationship", 
+     xlab = "", ylab = "Target", col = colors, pch = 16, cex = 0.6,
+     xaxt = 'n')
+
+axis(1, at = 1:length(state_labels), labels = FALSE)
+text(x = 1:length(state_labels), y = par("usr")[3] - 0.05, 
+     labels = state_labels, srt = 45, adj = 1, xpd = TRUE, cex = 0.7)
+mtext("States", side = 1, line = 4)
+
+legend("topright", legend = c("High crime rate","Medium crime rate", "Low crime rate"), 
+       fill = colfunc(3), cex = 0.5)
+```
+
+From the plot, states like `Arizona`, `Michigan`, and `Pennsylvania`
+show higher median crime rates (in red), suggesting that these areas
+might experience socio-economic or cultural factors that contribute to
+higher incidences of crime.
+
+In contrast, states like `Montana`, `Wyoming`, and `Vermont`, indicated
+in green, have lower median crime rates. These states might benefit from
+stronger community cohesion, effective law enforcement, or other
+socio-economic factors that mitigate crime.
+
+The plot hints at a potential influence of climate on crime rates. For
+example, states with harsher winters (like `Vermont` and `Wyoming`)
+might have lower crime rates, supporting the CLASH model's theory that
+significant seasonal variation promotes future-oriented behaviors and
+self-control. Conversely, states with milder climates and less seasonal
+variation might experience higher crime rates due to reduced need for
+long-term planning and increased impulsivity.<br> This theory posits
+that consistent climates with less variation require less future
+planning, leading to a "faster" life strategy characterized by
+present-focused behaviors and reduced self-control, which can contribute
+to higher rates of aggression and violence.
+[1](https://news.osu.edu/how-does-climate-affect-violence-researchers-offer-new-theory/)
+
+**Correlation plot**
+
+Then, to gain a clearer understanding of the relationships between
+various socio-economic factors and their impact on crime rates, a
+correlation plot was employed. This visual representation helps to
+identify significant positive and negative correlations within the
+dataset, providing a foundation for more detailed analysis.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(1, 1))
+
+par(mar=c(5, 4, 3, 2)) 
+
+#"target" and "bc_target" exhibit really similar correlation patterns, I choose the original one for interpretability
+data_without_state <- data[, !(names(data) %in% c("State", "bc_target"))]
+
+correlations = cor(data_without_state)
+
+corrplot(correlations, method = "color",
+         order = "hclust",
+         cex.main = 1,        
+         cex.axis = 0.75,      
+         tl.cex = 0.70)         
+mtext("Correlation Matrix", side=2, line=3, las=0, cex=1.2)
+```
+
+The correlation plot reveals several key insights. There are strong
+positive relationships between `Families_2Parents`, `Kids_2Parents` and
+`Teen_2Par`, indicating communities with a high percentage of two-parent
+families also have many kids and teens in such households. Similarly,
+higher educational attainment (`Degree_BS_Or_More`) correlates with
+higher `Inc_from_inv`, reflecting that individuals with higher education
+levels are likely to have more investment-related income, which aligns
+with general socio-economic trends.. Another notable positive
+correlation exists between `YoungKids_2Par` and `Teen_2Par`, suggesting
+consistency in family structures.
+
+Another notable positive correlation exists between `YoungKids_2Par` and
+`Teen_2Par`, suggesting consistency in family structures where
+households with younger children are also likely to have teenagers,
+indicating stable family environments.
+
+Conversely, significant negative correlations are observed between
+`Below_Poverty` and `Median_Income`, `Employed`, and
+`Families_2Parents`, indicating that higher income, employment rates,
+and stable family structures are associated with lower poverty levels.
+
+Regarding crime rates (`target`), there are positive correlations with
+`Below_Poverty`, `Unemployment`, `Welfare_Public_Assist`, and
+`Illegitimate_Births`, suggesting that higher levels of poverty,
+unemployment, reliance on public assistance, and instances of
+illegitimate births are linked to increased crime rates. In contrast,
+negative correlations between target and variables like
+`Degree_BS_Or_More`, `Median_Income`, and `Employed` show that higher
+education, income, and employment levels are associated with lower crime
+rates, reflecting the socio-economic benefits of stability and
+education.
+
+Other notable correlations include a positive relationship between
+`Poor_English` and `Large_Families`, which could indicate that families
+with language barriers tend to have more children. However the
+relationship between `Illegitimate_Births` and `Below_Poverty` appears
+to be neutral or slightly positive, highlighting potential
+socio-economic challenges but not a strong inverse relationship.
+
+### Bayesian Analysis
+
+In this section of the project, we will employ a Hierarchical Bayesian
+Model to analyze the relationships between various socio-economic
+factors and crime rates. Hierarchical Bayesian models are particularly
+powerful for this type of analysis because they allow us to account for
+both fixed effects and random effects, making them ideal for data that
+is grouped or nested, such as our data which is grouped by states.
+
+#### Hierarchical Bayesian Model
+
+A hierarchical Bayesian model includes both fixed effects, which
+represent overall effects estimated across all groups, and random
+effects, which account for variations within each group. In this
+context, our fixed effects include socio-economic and demographic
+variables such as `YoungKids_2Par`, `Teen_2Par`, `Employed`,
+`Below_Poverty`, `Degree_BS_Or_More`, `Inc_from_inv`, `Speak_Eng_Only`,
+`Illegitimate_Births`, `Large_Families`, `Poor_English`,
+`Families_2Parents`, `Working_mom`, `Median_Income`, `Unemployment`, and
+`Welfare_Public_Assist`. The random effects are represented by the
+`State` variable, allowing the relationship between these predictors and
+the crime rates to vary across different states.
+
+#### Model Specification
+
+Given that the target variable is the percentage of crime rates per
+100,000 people, a continuous variable between 0 and 1, we have chosen
+the beta distribution for our response variable. The beta family is
+well-suited for modeling proportions and rates constrained within the 0
+to 1 interval.
+
+#### Priors
+
+We have selected weakly informative priors for our model to incorporate
+some prior knowledge while still allowing the data to inform the
+posterior estimates significantly. Specifically:
+
+-   **Normal(0, 1)** prior for the fixed effects coefficients (class =
+    "b"). This prior assumes that the coefficients are normally
+    distributed with a mean of 0 and a standard deviation of 1,
+    reflecting an assumption that most effects are small but allowing
+    for the possibility of larger effects.
+
+-   **Gamma(1, 0.01)** prior for the phi parameter, which controls the
+    dispersion of the beta distribution for each observation. This
+    choice mitigates the risk of extremely small values, ensuring a more
+    stable estimation.
+
+-   **Normal(0, tau_state)** prior for the random effects associated
+    with states. This prior captures the variability across states while
+    maintaining a focus on the overall mean effect.
+
+-   **Gamma(1, 1)** prior for the standard deviation of the random
+    effects (class = "sd"). This prior is selected for its ability to
+    maintain positive values, reflecting the inherent property of
+    standard deviations.
+
+## **MODELS**
+
+### **BASE MODEL**
+
+We first started with a ***basic hierarchical model*** where the target
+variable is rescaled between 0.001 and 0.999 so that it can be used for
+the beta model and it won't affect much the results:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+data$State = as.factor(data$State)
+data$bc_target_bayes = rescale(data$bc_target, to = c(0.001, 0.999))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+model_string_diag <- "
+model {
+  # Likelihood for each observation
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                    beta[2] * YoungKids_2Par[i] +
+                    beta[3] * Teen_2Par[i] +
+                    beta[4] * Employed[i] +
+                    beta[5] * Below_Poverty[i] +
+                    beta[6] * Degree_BS_Or_More[i] +
+                    beta[7] * Inc_from_inv[i] +
+                    beta[8] * Speak_Eng_Only[i] +
+                    beta[9] * Illegitimate_Births[i] +
+                    beta[10] * Large_Families[i] +
+                    beta[11] * Poor_English[i] +
+                    beta[12] * Families_2Parents[i] +
+                    beta[13] * Working_mom[i] +
+                    beta[14] * Median_Income[i] +
+                    beta[15] * Unemployment[i] +
+                    beta[16] * Welfare_Public_Assist[i] + 
+                    state_effect[State[i]]  # Random effect for State
+
+    # Compute mu[i] from the logit transformation with capping
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i]
+
+    # Beta distribution for the response variable, with clamped phi[i]
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid extremely small values
+    
+    # Prior for phi[i] - gamma distribution for each observation
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for beta coefficients
+  for (j in 1:16) {
+    beta[j] ~ dnorm(0, 1)  # Normal prior for the fixed effects
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)  # Random effect for states
+  }
+
+  # Hyperparameters for state random effects
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state
+  tau_state <- pow(sd_state, -2)  # Convert to precision
+}
+"
+writeLines(model_string_diag, con = "model_diag.jags")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+jags_data <- list(
+  N = nrow(data),
+  S = length(unique(data$State)),
+  bc_target_bayes = data$bc_target_bayes,
+  YoungKids_2Par = data$YoungKids_2Par,
+  Teen_2Par = data$Teen_2Par,
+  Employed = data$Employed,
+  Below_Poverty = data$Below_Poverty,
+  Degree_BS_Or_More = data$Degree_BS_Or_More,
+  Inc_from_inv = data$Inc_from_inv,
+  Speak_Eng_Only = data$Speak_Eng_Only,
+  Illegitimate_Births = data$Illegitimate_Births,
+  Large_Families = data$Large_Families,
+  Poor_English = data$Poor_English,
+  Families_2Parents = data$Families_2Parents,
+  Working_mom = data$Working_mom,
+  Median_Income = data$Median_Income,
+  Unemployment = data$Unemployment,
+  Welfare_Public_Assist = data$Welfare_Public_Assist,
+  State = as.numeric(factor(data$State)) 
+)
+
+# Initial values
+inits <- function() {
+  list(
+    beta = rnorm(16, 0, 1),  # Normal initialization for beta
+    phi = rgamma(nrow(data), 1, 0.01),  # Gamma initialization for phi
+    sd_state = rgamma(1, 1, 1),  # Gamma initialization for sd_state (positive)
+    state_effect = rnorm(length(unique(data$State)), 0, 1)  # Normal for state_effect
+  )
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_diag <- c("beta", "sd_state", "state_effect")
+
+jags_model_diag <- jags.model("model_diag.jags", data = jags_data, inits = inits, n.chains = 3)
+update(jags_model_diag, 1000)  #20% of the iterations
+samples_diag <- coda.samples(jags_model_diag, variable.names = params_diag, n.iter = 5000) 
+
+summary(samples_diag)
+```
+
+The summary of this Bayesian model provides insight into the relative
+influence of various predictors on the target variable. A few key
+predictors emerge as particularly impactful. For example,
+`Illegitimate_Births` and `Large_Families` show strong positive
+associations with the target, meaning higher values of these variables
+tend to increase the predicted outcome. This positive effect is
+consistent across the samples, as indicated by relatively narrow
+credible intervals that do not include zero. On the other hand,
+variables like `Families_2Parents` and `Inc_from_inv` exhibit clear
+negative effects, suggesting that higher values in these predictors are
+associated with a decrease in the target. The confidence in these
+negative relationships is underscored by credible intervals that remain
+below zero, reinforcing the idea that these variables reliably
+contribute to lowering the predicted outcome.
+
+There are, however, some predictors with more ambiguous or mixed
+effects. For instance, variables such as `Teen_2Par` and `Median_Income`
+have wider credible intervals that encompass zero, indicating they may
+not exert a consistent or strong influence on the target. This
+uncertainty suggests that, within the context of this model, these
+predictors do not contribute significantly to explaining the variation
+in the outcome.
+
+Additionally, the model incorporates random effects for `State`, which
+capture variability at the state level that could arise from unobserved
+regional factors. This addition helps control for regional differences,
+thereby refining the accuracy of the fixed effects. By adjusting for
+state-level variability, the model can offer a more accurate assessment
+of the impact of individual predictors while accounting for unmeasured
+state-specific influences.
+
+The model’s structure, particularly the use of a beta distribution for
+the target with an individual dispersion parameter (`phi`) for each
+observation, reflects an approach tailored to data that lie between 0
+and 1. This setup helps address variability effectively across
+observations and enhances the model's robustness in capturing the
+nuances of the response variable. Overall, the model reveals that
+certain predictors, such as `Illegitimate_Births` and
+`Families_2Parents`, play significant roles, while others appear to have
+a more marginal or uncertain impact. The inclusion of both fixed and
+random effects makes the model a well-rounded framework, capable of
+balancing individual-level and state-level variability, thus enhancing
+the reliability of its predictions and parameter estimates.
+
+#### **Model check diagnostics**
+
+For the model check *Posterior Predictive check plot* and *Deviance Information Criterion (DIC)* were employed.<br> The Posterior Predictivemcheck plot allows to compare the observed data with the data generated by the model, helping to assess how well the model captures the underlying structure of the data.<br> The DIC, is a statistical measure used to evaluate the predictive accuracy of a Bayesian model, taking into account both the goodness of fit and the complexity of the model.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+model_string <- "
+model {
+  # Likelihood for each observation
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                    beta[2] * YoungKids_2Par[i] +
+                    beta[3] * Teen_2Par[i] +
+                    beta[4] * Employed[i] +
+                    beta[5] * Below_Poverty[i] +
+                    beta[6] * Degree_BS_Or_More[i] +
+                    beta[7] * Inc_from_inv[i] +
+                    beta[8] * Speak_Eng_Only[i] +
+                    beta[9] * Illegitimate_Births[i] +
+                    beta[10] * Large_Families[i] +
+                    beta[11] * Poor_English[i] +
+                    beta[12] * Families_2Parents[i] +
+                    beta[13] * Working_mom[i] +
+                    beta[14] * Median_Income[i] +
+                    beta[15] * Unemployment[i] +
+                    beta[16] * Welfare_Public_Assist[i] + 
+                    state_effect[State[i]]  # Random effect for State
+
+    y_rep[i] ~ dbeta(mu[i] * phi[i], (1 - mu[i]) * phi[i])  # Predicted values
+    # Compute mu[i] from the logit transformation with capping
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i]
+
+    # Beta distribution for the response variable, with clamped phi[i]
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid extremely small values
+    
+    # Prior for phi[i] - gamma distribution for each observation
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for beta coefficients
+  for (j in 1:16) {
+    beta[j] ~ dnorm(0, 1)  # Normal prior for the fixed effects
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)  # Random effect for states
+  }
+
+  # Hyperparameters for state random effects
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state
+  tau_state <- pow(sd_state, -2)  # Convert to precision
+}
+"
+writeLines(model_string, con = "model.jags")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+jags_data <- list(
+  N = nrow(data),
+  S = length(unique(data$State)),
+  bc_target_bayes = data$bc_target_bayes,
+  YoungKids_2Par = data$YoungKids_2Par,
+  Teen_2Par = data$Teen_2Par,
+  Employed = data$Employed,
+  Below_Poverty = data$Below_Poverty,
+  Degree_BS_Or_More = data$Degree_BS_Or_More,
+  Inc_from_inv = data$Inc_from_inv,
+  Speak_Eng_Only = data$Speak_Eng_Only,
+  Illegitimate_Births = data$Illegitimate_Births,
+  Large_Families = data$Large_Families,
+  Poor_English = data$Poor_English,
+  Families_2Parents = data$Families_2Parents,
+  Working_mom = data$Working_mom,
+  Median_Income = data$Median_Income,
+  Unemployment = data$Unemployment,
+  Welfare_Public_Assist = data$Welfare_Public_Assist,
+  State = as.numeric(factor(data$State)) 
+)
+
+inits <- function() {
+  list(
+    beta = rnorm(16, 0, 1),  
+    phi = rgamma(nrow(data), 1, 0.01), 
+    sd_state = rgamma(1, 1, 1),  
+    state_effect = rnorm(length(unique(data$State)), 0, 1) 
+  )
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_ppc <- c("beta", "sd_state", "state_effect", "y_rep")
+
+jags_model_ppc <- jags.model("model.jags", data = jags_data, inits = inits, n.chains = 3)
+update(jags_model_ppc, 1000)  
+samples_ppc <- coda.samples(jags_model_ppc, variable.names = params_ppc, n.iter = 5000) 
+
+y_rep_matrix <- as.matrix(samples_ppc)[, grep("y_rep", colnames(as.matrix(samples_ppc)))]
+
+y_rep_mean <- apply(y_rep_matrix, 2, mean)
+
+#PP-CHECK
+ppc_data <- data.frame(
+  observed = data$bc_target_bayes,
+  predicted = y_rep_mean
+)
+
+plot1 <- ggplot(ppc_data, aes(x = observed)) +
+  geom_density(aes(y = ..density..), color = "darkblue", fill = "darkblue", alpha = 0.3) +
+  geom_density(aes(x = predicted, y = ..density..), color = "lightblue", fill = "lightblue", alpha = 0.3) +
+  labs(title = "Posterior Predictive Check for the Base Model",
+       x = "Crime Rate",
+       y = "Density") +
+  annotate("text", x = 0.7, y = 3, label = "Observed Data", color = "darkblue", hjust = 0) +
+  annotate("text", x = 0.7, y = 3.2, label = "Model Predictions", color = "lightblue", hjust = 0) +
+  theme_minimal()
+
+print(plot1)
+```
+
+This posterior predictive check plot compares the density of the
+observed crime rate data (in dark blue) with the model's predictions (in
+light blue). The model's predictive distribution closely follows the
+general shape of the observed data, suggesting that the model captures
+the main characteristics of the data. However, it slightly overestimates
+the density in the mid-range (around 0.5) and underestimates it in some
+lower and upper parts of the distribution. These discrepancies indicate
+that while the model provides a reasonable fit, there may be room for
+refinement to better capture the tails of the distribution.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_diag <- c("beta", "sd_state", "state_effect")
+
+jags_model_diag <- jags.model("model_diag.jags", data = jags_data, inits = inits, n.chains = 3)
+update(jags_model_diag, 1000)  
+samples_diag <- coda.samples(jags_model_diag, variable.names = params_diag, n.iter = 5000) 
+
+#DIC
+dic_result <- dic.samples(jags_model_diag, n.iter = 5000)
+#mean deviance
+mean_deviance <- mean(dic_result$deviance)
+#mean penalty
+mean_penalty <- mean(dic_result$penalty)
+#final DIC
+dic <- mean_deviance + mean_penalty
+print(paste("Single DIC value for the model:", dic)) 
+```
+
+The Raftery-Lewis diagnostic is used to calculate the number of
+iterations required to ensure that the Markov Chain Monte Carlo (MCMC)
+sampler has sufficient precision and convergence. This diagnostic helps
+determine how many iterations are needed to estimate the quantiles of
+the posterior distribution with a specific accuracy and probability. So
+we will employ it to check if the number of samples we choose is right, that in this case is 3746.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+raftery_diag <- raftery.diag(samples_diag)
+print(paste("Needed sample size:", raftery_diag)) 
+```
+
+#### **Convergence diagnostic**
+
+For the evaluation of the MCMC convergence *Traceplot*, *density plot*
+and *Rhat* from the model summary were used.
+
+***Traceplot***
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+samples_matrix = as.matrix(samples_diag)
+all_params <- colnames(samples_matrix)
+params <- all_params[grepl("beta|sd_state|state_effect", all_params)]
+
+for (i in seq(1, length(params), by = 4)) {
+  end = min(i + 3, length(params))
+  param_subset = params[i:end]
+  traceplot = mcmc_trace(as.mcmc(samples_matrix), pars = param_subset)
+  print(traceplot)
+}
+```
+
+The *trace plots* provide valuable insights into the convergence and
+mixing of the MCMC chains for the Bayesian hierarchical model. Each plot
+represents the sampling process for different parameters across the four
+chains.
+
+The frequent crossing over of chains indicates good mixing, suggesting
+that the MCMC sampler is exploring the parameter space efficiently.
+There are no signs of divergence or significant drift, which would be
+evident if the chains moved in a consistent direction without crossing.
+Instead, the chains hover around a stable mean, indicating convergence.
+
+Furthermore, the chains appear stationary, with fluctuations occurring
+around a consistent mean, suggesting that the MCMC process has likely
+reached a stable distribution. This visual evidence supports the
+expectation of a high effective sample size (ESS), implying that the
+estimates are reliable. While the specific metric for ESS isn't
+displayed in the trace plots, the overall visual evidence strongly
+indicates good chain mixing and parameter stability.
+
+***Density plot***
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+density_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")
+for (i in seq(1, length(params), by = 4)) {
+  end <- min(i + 3, length(params))
+  param_subset <- params[i:end]
+  density_plot <- mcmc_dens_overlay(samples_diag, pars = param_subset) + 
+    scale_color_manual(values = density_colors) +
+    ggtitle("Density Plots")
+  
+  print(density_plot)
+}
+```
+
+The *density plots* of the posterior distributions for the parameters
+reveal several important insights:
+
+-   Firstly, the absence of multimodal behavior is evident, indicating
+    that the MCMC chains are sampling from a single mode of the
+    posterior distribution. This is beneficial as it suggests there are
+    no issues related to multiple modes, which can complicate the
+    interpretation of results.
+
+-   Secondly, the overlapping density curves from different chains show
+    strong agreement among the chains. This overlap further supports the
+    notion of convergence, affirming that all chains are sampling from
+    the same posterior distribution.
+
+-   Lastly, the smooth and unimodal shapes of the density plots suggest
+    that the parameter estimates are well-defined and stable. The
+    density plots illustrate the uncertainty around the parameter
+    estimates, with narrower peaks indicating more precise estimates.
+
+#### **Error check**
+
+To validate the accuracy of our Bayesian hierarchical model, we perform
+a comprehensive error check using various statistical metrics. By
+extracting posterior samples and summarizing key statistics such as
+mean, median, standard deviation (SD), mean absolute deviation (MAD),
+Monte Carlo Standard Error (MCSE), and Effective Sample Size (ESS), we
+can assess the convergence and precision of our parameter estimates.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+samples_matrix <- as.matrix(samples_diag)
+posterior_samples <- as_draws_df(samples_matrix)
+
+summary_stats <- summarize_draws(posterior_samples, 
+                                 "mean", "median", "sd", "mad", "mcse_mean", "mcse_sd", "rhat", "ess_bulk", "ess_tail")
+
+print(summary_stats, n = Inf)
+```
+
+The summary of the beta parameters reveals valuable insights into the
+model's findings. The intercept, with a mean of 0.13, indicates a
+positive baseline effect on the response variable. Notably, `beta[6]`,
+representing the impact of individuals with a Bachelor’s degree or
+higher, has a mean estimate of 0.06, suggesting a slight positive
+influence on the outcome.
+
+Conversely, the parameter for `Families_2Parents` (`beta[12]`) exhibits
+a substantial negative effect, with a mean of -0.46. This indicates that
+having two parents is associated with a decrease in the response
+variable, highlighting the potential challenges faced by families with
+this structure. Similarly, `beta[2]`, which corresponds to the effect of
+`YoungKids_2Par`, has a mean of -0.03, suggesting a small negative
+impact.
+
+In terms of uncertainty, the standard deviations (SD) for most
+parameters are relatively low, indicating that the estimates are stable.
+The R-hat values around 1 further confirm that the chains have
+converged, bolstering confidence in these parameter estimates. Overall,
+these results provide a clear view of how different covariates influence
+the response variable in the model.
+
+### **SECOND MODEL**
+
+To enhance the model's formula, both the summary of the base model and
+the interactions between the target variable and selected predictors
+highlighted in the summary analysis were used:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+selected_data = data[, c("bc_target_bayes","Employed", "Below_Poverty", "Illegitimate_Births", "Large_Families", "Poor_English", "Families_2Parents", "Median_Income", "Working_mom", "Inc_from_inv", "Welfare_Public_Assist", "YoungKids_2Par", "Teen_2Par")]
+ggpairs(selected_data,
+        upper = list(continuous = wrap("cor", size = 4)),
+        lower = list(continuous = wrap("points", alpha = 0.6)),
+        diag = list(continuous = wrap("densityDiag"))
+) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+The plot illustrates the relationships among various socio-economic
+variables and their correlation with crime rates per 100,000 people. It
+shows that while most areas have low crime rates, a few areas experience
+significantly higher rates, highlighting a concentration of crime in
+specific regions.
+
+Key findings include negative correlations between employment and crime
+rates, indicating that higher employment is associated with lower crime
+rates, and positive correlations between poverty and crime rates,
+suggesting that higher poverty levels are linked to higher crime rates.
+Additionally, higher rates of illegitimate births, larger families,
+poorer English proficiency, and greater reliance on public assistance
+are all positively correlated with higher crime rates. Conversely,
+higher median income and more two-parent families are negatively
+correlated with crime rates, indicating these factors contribute to
+lower crime rates.
+
+Interrelationships among predictors reveal that higher employment is
+associated with lower poverty and higher median income, while more
+two-parent families are associated with higher median incomes and lower
+poverty levels. This overall pattern suggests that socio-economic
+stability, characterized by higher employment, higher income, and more
+two-parent families, is negatively correlated with crime rates, whereas
+socio-economic challenges, such as higher poverty, greater reliance on
+welfare, and higher rates of illegitimate births, are positively
+correlated with crime rates.
+
+The resulting model, considering both the result of *base_model* and the
+plot above, will be the following:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+model_string_diag2 <- "
+model {
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                 beta[2] * Employed[i] +
+                 beta[3] * Below_Poverty[i] +
+                 beta[4] * Illegitimate_Births[i] +
+                 beta[5] * Large_Families[i] +
+                 beta[6] * Inc_from_inv[i] +
+                 beta[7] * Median_Income[i] +
+                 beta[8] * Families_2Parents[i] +
+                 beta[9] * YoungKids_2Par[i] +
+                 beta[10] * Teen_2Par[i] +
+                 beta[11] * Working_mom[i] +
+                 beta[12] * Welfare_Public_Assist[i] +
+                 # Interaction terms
+                 beta[13] * Employed[i] * Below_Poverty[i] +
+                 beta[14] * Illegitimate_Births[i] * Below_Poverty[i] +
+                 beta[15] * Illegitimate_Births[i] * Welfare_Public_Assist[i] +
+                 beta[16] * Large_Families[i] * Below_Poverty[i] +
+                 beta[17] * Inc_from_inv[i] * Median_Income[i] +
+                 beta[18] * Median_Income[i] * Below_Poverty[i] +
+                 beta[19] * Employed[i] * Welfare_Public_Assist[i] +
+                 beta[20] * YoungKids_2Par[i] * Below_Poverty[i] +
+                 beta[21] * Teen_2Par[i] * Below_Poverty[i] +
+                 state_effect[State[i]]  # Random effect for state
+
+    # Compute mu[i] from the logit transformation
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i] between 1e-5 and 1 - 1e-5
+
+    # Beta distribution for the response variable, with clamped phi[i]
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid extremely small values
+    
+    # Prior for phi[i] - gamma distribution for each observation (normale troncata/log-normale)
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for coefficients
+  for (j in 1:21) {
+    beta[j] ~ dnorm(0, 1)  # Normal prior
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)
+  }
+
+  # Hyperparameters
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state to ensure positivity
+  tau_state <- pow(sd_state, -2)
+}
+"
+#replacing the gamma with the normal truncated at 0 worsen everything 
+
+writeLines(model_string_diag2, con = "model_diag2.jags")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+jags_data2 <- list(
+  N = nrow(data),
+  S = length(unique(data$State)),
+  bc_target_bayes = data$bc_target_bayes,
+  YoungKids_2Par = data$YoungKids_2Par,
+  Teen_2Par = data$Teen_2Par,
+  Employed = data$Employed,
+  Below_Poverty = data$Below_Poverty,
+  Illegitimate_Births = data$Illegitimate_Births,
+  Large_Families = data$Large_Families,
+  Inc_from_inv = data$Inc_from_inv,
+  Families_2Parents = data$Families_2Parents,
+  Median_Income = data$Median_Income,
+  Working_mom = data$Working_mom,
+  Welfare_Public_Assist = data$Welfare_Public_Assist,
+  State = as.numeric(factor(data$State))  # Convert the state factor to numeric
+)
+
+inits2 <- function() {
+  list(
+    beta = rnorm(21, 0, 1),  
+    phi = rgamma(nrow(data), 1, 0.01), 
+    sd_state = rgamma(1, 1, 1),  
+    state_effect = rnorm(length(unique(data$State)), 0, 1)  
+  )
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_diag2 <- c("beta", "sd_state", "state_effect")
+
+jags_model_diag2 <- jags.model("model_diag2.jags", data = jags_data2, inits = inits2, n.chains = 3)
+update(jags_model_diag2, 1000)  
+samples_diag2 <- coda.samples(jags_model_diag2, variable.names = params_diag2, n.iter = 5000)
+
+summary(samples_diag2)
+```
+
+The summary of the second model highlights the influence of various
+predictors on the target variable. The intercept (beta[1]) has a
+positive mean of approximately 0.186, suggesting a baseline effect when
+predictors are at their reference levels. Key predictors like `Illegitimate_Births` (beta[4]) show a significant positive association, with a mean of
+around 0.273, indicating that higher values lead to increased predicted
+outcomes.
+
+In contrast, predictors such as `Inc_from_inv`(beta[6]) and `Families_2Parents`(beta[8]) have
+negative mean estimates (-0.087 and -0.462), indicating that higher
+values in these variables are associated with lower predicted outcomes.
+These negative relationships are supported by credible intervals that
+remain below zero.
+
+Some predictors, like `Below_Poverty`(beta[3]), exhibit ambiguous effects, with a
+mean near zero and credible intervals crossing zero, suggesting no
+strong influence on the target variable. The inclusion of interaction
+terms, such as `Illegitimate_Births * Below_poverty`(beta[14]), indicates that the combined effects of
+variables can modulate overall impacts.
+
+Overall, the summary illustrates how specific socio-economic factors
+influence the target variable, with strong positive correlations for
+some predictors and weaker or negative relationships for others,
+reflecting the complexity of these interactions.
+
+#### **Model check diagnostics**
+
+For the diagnostic of the model we compared the *Posterior Predictive check plots* and the *DIC* scores:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+model_string_diag2_ppc <- "
+model {
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                 beta[2] * Employed[i] +
+                 beta[3] * Below_Poverty[i] +
+                 beta[4] * Illegitimate_Births[i] +
+                 beta[5] * Large_Families[i] +
+                 beta[6] * Inc_from_inv[i] +
+                 beta[7] * Median_Income[i] +
+                 beta[8] * Families_2Parents[i] +
+                 beta[9] * YoungKids_2Par[i] +
+                 beta[10] * Teen_2Par[i] +
+                 beta[11] * Working_mom[i] +
+                 beta[12] * Welfare_Public_Assist[i] +
+                 # Interaction terms
+                 beta[13] * Employed[i] * Below_Poverty[i] +
+                 beta[14] * Illegitimate_Births[i] * Below_Poverty[i] +
+                 beta[15] * Illegitimate_Births[i] * Welfare_Public_Assist[i] +
+                 beta[16] * Large_Families[i] * Below_Poverty[i] +
+                 beta[17] * Inc_from_inv[i] * Median_Income[i] +
+                 beta[18] * Median_Income[i] * Below_Poverty[i] +
+                 beta[19] * Employed[i] * Welfare_Public_Assist[i] +
+                 beta[20] * YoungKids_2Par[i] * Below_Poverty[i] +
+                 beta[21] * Teen_2Par[i] * Below_Poverty[i] +
+                 state_effect[State[i]]  # Random effect for state
+
+    y_rep[i] ~ dbeta(mu[i] * phi[i], (1 - mu[i]) * phi[i])  # Predicted values
+    
+    # Compute mu[i] from the logit transformation
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i] between 1e-5 and 1 - 1e-5
+
+    # Beta distribution for the response variable, with clamped phi[i]
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid extremely small values
+
+    # Prior for phi[i] - gamma distribution for each observation
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+
+  }
+
+  # Priors for coefficients
+  for (j in 1:21) {
+    beta[j] ~ dnorm(0, 1)  # Normal prior
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)
+  }
+
+  # Hyperparameters
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state to ensure positivity
+  tau_state <- pow(sd_state, -2)
+}
+"
+writeLines(model_string_diag2_ppc, con = "model_string_diag2_ppc.jags")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+jags_data2 <- list(
+  N = nrow(data),
+  S = length(unique(data$State)),
+  bc_target_bayes = data$bc_target_bayes,
+  Employed = data$Employed,
+  Below_Poverty = data$Below_Poverty,
+  Illegitimate_Births = data$Illegitimate_Births,
+  Large_Families = data$Large_Families,
+  Inc_from_inv = data$Inc_from_inv,
+  Median_Income = data$Median_Income,
+  Families_2Parents = data$Families_2Parents,
+  YoungKids_2Par = data$YoungKids_2Par,
+  Teen_2Par = data$Teen_2Par,
+  Working_mom = data$Working_mom,
+  Welfare_Public_Assist = data$Welfare_Public_Assist,
+  State = as.numeric(factor(data$State))  # Make sure State is properly encoded
+)
+
+inits2 <- function() {
+  list(
+    beta = rnorm(21, 0, 1),  
+    phi = rgamma(nrow(data), 1, 0.01),  
+    sd_state = rgamma(1, 1, 1),  
+    state_effect = rnorm(length(unique(data$State)), 0, 1)  
+  )
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+params_ppc2 <- c("beta", "sd_state", "state_effect", "y_rep")
+
+jags_model_ppc2 <- jags.model("model_string_diag2_ppc.jags", data = jags_data2, inits = inits2, n.chains = 3)
+update(jags_model_ppc2, 1000)
+samples_ppc2 <- coda.samples(jags_model_ppc2, variable.names = params_ppc2, n.iter = 5000)
+
+y_rep_matrix2 <- as.matrix(samples_ppc2)[, grep("y_rep", colnames(as.matrix(samples_ppc2)))]
+y_pred2 <- apply(y_rep_matrix2, 2, mean)
+
+
+# PP-CHECK
+ppc_data2 <- data.frame(
+  observed = data$bc_target_bayes,
+  predicted = y_pred2
+)
+
+plot_2 <- ggplot(ppc_data2, aes(x = observed)) +
+  geom_density(aes(y = ..density..), color = "darkblue", fill = "darkblue", alpha = 0.3) +
+  geom_density(aes(x = predicted, y = ..density..), color = "lightblue", fill = "lightblue", alpha = 0.3) +
+  labs(title = "Posterior Predictive Check for the 2nd Model",
+       x = "Crime Rate",
+       y = "Density") +
+  annotate("text", x = 0.7, y = 3, label = "Observed Data", color = "darkblue", hjust = 0) +
+  annotate("text", x = 0.7, y = 3.2, label = "Model Predictions", color = "lightblue", hjust = 0) +
+  theme_minimal()
+
+print(plot_2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_diag2 <- c("beta", "sd_state", "state_effect")
+
+jags_model_diag2 <- jags.model("model_diag2.jags", data = jags_data2, inits = inits2, n.chains = 3)
+update(jags_model_diag2, 1000) 
+samples_diag2 <- coda.samples(jags_model_diag2, variable.names = params_diag2, n.iter = 5000)
+
+dic_result2 <- dic.samples(jags_model_diag2, n.iter = 5000)
+mean_deviance2 <- mean(dic_result2$deviance)
+mean_penalty2 <- mean(dic_result2$penalty)
+dic2 <- mean_deviance2 + mean_penalty2
+print(paste("Single DIC value for the second model:", dic2)) 
+```
+
+The *Posterior Predictive Check* of this second model demonstrates an
+enhanced fit. The predicted density curves appear to align more closely
+with the observed data, particularly in the mid to higher ranges of
+crime rates. This suggests that the inclusion of interaction terms and
+the exclusion of some covariates might have allowed the model to better
+account for the underlying relationships in the data.
+
+If compared to the PPC of the first model, the improvement in the second
+model is especially noticeable as the density curves converge more
+effectively, indicating that the model has become more adept at
+predicting crime rates across different socio-economic contexts.
+Overall, it appears that the modifications introduced in the second
+model have led to a more robust predictive capability, thereby enhancing
+the model's accuracy in estimating crime rates.
+
+The *DIC value* further support this observation.
+
+In summary, the posterior predictive checks and the DIC values
+collectively indicate that the second model outperforms the base model
+in predicting crime rates. The second model's improved alignment with
+the observed data and its lower DIC value highlight its superiority in
+capturing the underlying patterns within the data.
+
+#### **Convergence diagnostic**
+
+***Traceplot***
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+samples_matrix2 = as.matrix(samples_diag2)
+all_params2 <- colnames(samples_matrix2)
+params2 <- all_params2[grepl("beta|sd_state|state_effect", all_params2)]
+for (i in seq(1, length(params2), by = 4)) {
+  end = min(i + 3, length(params2))
+  param_subset = params2[i:end]
+  traceplot = mcmc_trace(as.mcmc(samples_matrix2), pars = param_subset)
+  print(traceplot)
+}
+```
+
+***Density plot***
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+density_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")
+for (i in seq(1, length(params2), by = 4)) {
+  end <- min(i + 3, length(params2))
+  param_subset <- params2[i:end]
+  density_plot <- mcmc_dens_overlay(samples_diag2, pars = param_subset) + 
+    scale_color_manual(values = density_colors) +
+    ggtitle("Density Plots")
+  
+  print(density_plot)
+}
+```
+
+The conclusions we can draw from these traceplots and density plot are
+the same as the *base model*:
+
+-   The *trace plots* indicate that the MCMC chains for the Bayesian
+    hierarchical model have converged well, with good mixing and
+    stationarity. The parameter estimates appear to be reliable, with
+    high effective sample sizes and R-hat values close to 1, indicating
+    robust and trustworthy inferences. Both Bulk_ESS and Tail_ESS values
+    are sufficiently large, confirming that the chains have thoroughly
+    explored the parameter space.
+
+-   The *density plots* demonstrate unimodal and smooth distributions
+    for the parameters, suggesting well-defined and stable parameter
+    estimates. The density curves for different chains overlap
+    significantly, indicating strong agreement among the chains and
+    further supporting the convergence of the model. The absence of
+    multimodal behavior in the density plots suggests that the MCMC
+    chains are sampling from a single mode of the posterior
+    distribution, avoiding issues related to multiple modes.
+
+#### **Error check**
+
+Then after the convergence diagnostics we check the accuracy of our
+Bayesian hierarchical model with the following statistics :
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+samples_matrix2 <- as.matrix(samples_diag2)
+posterior_samples2 <- as_draws_df(samples_matrix2)
+
+summary_stats2 <- summarize_draws(posterior_samples2, 
+                                 "mean", "median", "sd", "mad", "mcse_mean", "mcse_sd", "rhat", "ess_bulk", "ess_tail")
+
+print(summary_stats2, n = Inf)
+```
+
+The error check for the Bayesian model parameters offers insights into
+the effects of various predictors on the target variable. The mean
+coefficients reveal significant associations: **`Illegitimate_Births`**
+has a mean of approximately 0.268, indicating a strong positive effect,
+while **`Large_Families`** shows a mean of 0.107, suggesting that higher
+values correlate with increased predicted outcomes. In contrast,
+**`Families_2Parents`** has a mean around -0.470, highlighting a
+negative association with the target.
+
+Standard deviations (sd) provide clarity on precision; for instance, the
+low sd of approximately 0.033 for **`Illegitimate_Births`** suggests
+reliability, whereas **`Families_2Parents`** has a higher sd of 0.071,
+indicating more uncertainty. Additionally, the MCSE values remain small,
+with **`Employed`** having a mean of approximately -0.086 and an sd of
+0.028, reflecting a negative relationship and precise estimation.
+
+R-hat values close to 1 (around 1.001) suggest good convergence of the
+Markov Chain Monte Carlo (MCMC) chains, confirming the stability of
+posterior distributions. The consistent signs and narrow credible
+intervals indicate a strong model fit, demonstrating that the model
+effectively captures the relationships among the predictors.
+
+In summary, the analysis points to a well-performing model with reliable
+estimates and a solid understanding of the underlying relationships
+within the data, critical for making informed inferences based on the
+model's output.
+
+### **FINAL MODEL**
+
+Given the considerations from the summary of the models, and the
+representations of the variables vs target, we went with the following
+new model:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#Since I am planning to apply some logs I need to ensure that the argument is not negative
+any(data$Below_Poverty < 0) #TRUE
+any(data$Median_income < 0) #FALSE
+
+
+#Since some of the arguments are negative I will apply abs() to the corresponding columns
+
+model_string_improved <- "
+model {
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                beta[2] * log(1 + abs(Below_Poverty[i])) +
+                beta[3] * Illegitimate_Births[i] +
+                beta[4] * Large_Families[i] +
+                beta[5] * Inc_from_inv[i] +
+                beta[6] * log(1 + abs(Median_Income[i])) +
+                beta[7] * Families_2Parents[i] +
+                beta[8] * Teen_2Par[i] +
+                beta[9] * Working_mom[i] +
+                beta[10] * Welfare_Public_Assist[i] +
+                # Interaction terms
+                beta[11] * Illegitimate_Births[i] * Welfare_Public_Assist[i] +
+                beta[12] * log(1 + abs(Median_Income[i])) * log(1 + abs(Below_Poverty[i])) +
+                beta[13] * Large_Families[i] * log(1 + abs(Below_Poverty[i])) +
+                beta[14] * Welfare_Public_Assist[i] * log(1 + abs(Below_Poverty[i])) +
+                beta[15] * Teen_2Par[i] * log(1 + abs(Below_Poverty[i])) +
+                state_effect[State[i]]  # Random effect for state
+
+    # Compute mu[i] from the logit transformation
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i]
+
+    # Beta distribution for the response variable
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid small values
+    
+    # Prior for phi[i] - gamma distribution for each observation
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for coefficients with regularization
+  for (j in 1:15) {
+    beta[j] ~ dnorm(0, 0.1)  # Regularized prior for the fixed effects
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)  # Random effect for states
+  }
+
+  # Hyperparameters for random effects
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state to ensure positivity
+  tau_state <- pow(sd_state, -2)  # Convert to precision
+}
+"
+writeLines(model_string_improved, con = "model_string_improved.jags")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+jags_improved <- list(
+  N = nrow(data),
+  S = length(unique(data$State)),
+  bc_target_bayes = data$bc_target_bayes,
+  Teen_2Par = data$Teen_2Par,
+  Below_Poverty = data$Below_Poverty,
+  Inc_from_inv = data$Inc_from_inv,
+  Illegitimate_Births = data$Illegitimate_Births,
+  Large_Families = data$Large_Families,
+  Families_2Parents = data$Families_2Parents,
+  Working_mom = data$Working_mom,
+  Median_Income = data$Median_Income,
+  Welfare_Public_Assist = data$Welfare_Public_Assist,
+  State = as.numeric(factor(data$State)) 
+)
+
+inits_improved <- function() {
+  list(
+    beta = rnorm(15, 0, 1),  
+    phi = rgamma(nrow(data), 1, 0.01),  
+    sd_state = rgamma(1, 1, 1),  
+    state_effect = rnorm(length(unique(data$State)), 0, 1)  
+  )
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_improved <- c("beta", "sd_state", "state_effect")
+
+jags_model_improved <- jags.model("model_string_improved.jags", data = jags_improved, inits = inits_improved, n.chains = 3)
+update(jags_model_improved, 1000)  
+samples_improved <- coda.samples(jags_model_improved, variable.names = params_improved, n.iter = 5000)
+
+summary(samples_improved)
+```
+
+The summary of the Bayesian model parameters provides an insightful
+analysis of the predictors' effects on the response variable.
+
+The empirical means of the beta coefficients reveal significant
+relationships. For instance, the coefficient for
+`log(1 + abs(Below_Poverty))` has a mean of approximately -0.2205,
+indicating that as the logged value of below-poverty increases, the
+outcome variable tends to decrease, suggesting that higher poverty
+levels are associated with lower predicted values. In contrast, the
+coefficient for `Illegitimate_Births` has a mean around 0.2350,
+signifying a positive effect, meaning that higher rates of illegitimate
+births are linked to higher values of the outcome.
+
+Other variables also present interesting dynamics. The coefficient for
+`Median_Income[i]` shows a mean of 0.2231, suggesting that as median
+income increases, the target outcome also tends to increase, indicating
+a positive correlation. Conversely, the coefficient for
+`Families_2Parents[i]` exhibits a mean around -0.4447, implying that an
+increase in two-parent families may lead to a decrease in the target
+variable, highlighting the complexity of social dynamics at play.
+
+The standard deviations (SD) of these coefficients provide insight into
+the reliability of the estimates. For example, `Large_Families` has a
+low SD of approximately 0.03279, indicating a precise estimate, whereas
+`Illegitimate_Births` shows a higher SD of around 0.04608, suggesting
+greater variability and uncertainty in its influence.
+
+The quantiles further illustrate the range and uncertainty surrounding
+these estimates. For instance, the 95% credible interval for
+`Illegitimate_Births` ranges from -0.4915 to -0.1341, indicating strong
+confidence in its negative association with the target variable.
+Meanwhile, `log(1 + abs(Below_Poverty))` has a broader range from
+-0.4031 to -0.0119, suggesting a more uncertain relationship.
+
+In conclusion, this Bayesian model's output highlights important
+predictors like `Below_Poverty`, `Illegitimate_Births`, and
+`Median_Income`, along with their effects on the target variable. The
+reliable estimates, variability insights, and credible intervals help
+inform understanding of these relationships, making this model a
+valuable tool for analysis and inference.
+
+#### **Model check diagnostics**
+
+For the diagnostic of the model we compared the *Posterior Predictive
+check plots* and the *DIC* scores:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+model_string_improved_ppc <- "
+model {
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                beta[2] * log(1 + abs(Below_Poverty[i])) +
+                beta[3] * Illegitimate_Births[i] +
+                beta[4] * Large_Families[i] +
+                beta[5] * Inc_from_inv[i] +
+                beta[6] * log(1 + abs(Median_Income[i])) +
+                beta[7] * Families_2Parents[i] +
+                beta[8] * Teen_2Par[i] +
+                beta[9] * Working_mom[i] +
+                beta[10] * Welfare_Public_Assist[i] +
+                # Interaction terms
+                beta[11] * Illegitimate_Births[i] * Welfare_Public_Assist[i] +
+                beta[12] * log(1 + abs(Median_Income[i])) * log(1 + abs(Below_Poverty[i])) +
+                beta[13] * Large_Families[i] * log(1 + abs(Below_Poverty[i])) +
+                beta[14] * Welfare_Public_Assist[i] * log(1 + abs(Below_Poverty[i])) +
+                beta[15] * Teen_2Par[i] * log(1 + abs(Below_Poverty[i])) +
+                state_effect[State[i]]  # Random effect for state
+
+    # Compute mu[i] from the logit transformation
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i]
+
+    # Predicted values (y_rep)
+    y_rep[i] ~ dbeta(mu[i] * phi[i], (1 - mu[i]) * phi[i])
+
+    # Beta distribution for the response variable
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid small values
+    
+    # Prior for phi[i] - gamma distribution for each observation
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for coefficients with regularization
+  for (j in 1:15) {
+    beta[j] ~ dnorm(0, 0.1)  # Regularized prior for the fixed effects
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)  # Random effect for states
+  }
+
+  # Hyperparameters for random effects
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state to ensure positivity
+  tau_state <- pow(sd_state, -2)  # Convert to precision
+}
+"
+writeLines(model_string_improved_ppc, con = "model_improved_ppc.jags")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+jags_data <- list(
+  N = nrow(data),
+  S = length(unique(data$State)),
+  bc_target_bayes = data$bc_target_bayes,
+  Teen_2Par = data$Teen_2Par,
+  Below_Poverty = data$Below_Poverty,
+  Inc_from_inv = data$Inc_from_inv,
+  Illegitimate_Births = data$Illegitimate_Births,
+  Large_Families = data$Large_Families,
+  Families_2Parents = data$Families_2Parents,
+  Working_mom = data$Working_mom,
+  Median_Income = data$Median_Income,
+  Welfare_Public_Assist = data$Welfare_Public_Assist,
+  State = as.numeric(factor(data$State)) 
+)
+
+inits <- function() {
+  list(
+    beta = rnorm(15, 0, 1),  
+    phi = rgamma(nrow(data), 1, 0.01),  
+    sd_state = rgamma(1, 1, 1),  
+    state_effect = rnorm(length(unique(data$State)), 0, 1)  
+  )
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_ppc <- c("beta", "sd_state", "state_effect", "y_rep")
+
+jags_model_ppc3 <- jags.model("model_improved_ppc.jags", data = jags_data, inits = inits, n.chains = 3)
+update(jags_model_ppc3, 1000)
+
+samples_ppc3 <- coda.samples(jags_model_ppc3, variable.names = params_ppc, n.iter = 5000)
+y_rep_matrix3 <- as.matrix(samples_ppc3)[, grep("y_rep", colnames(as.matrix(samples_ppc3)))]
+y_pred3 <- apply(y_rep_matrix3, 2, mean)
+
+# PP-CHECK
+ppc_data3 <- data.frame(
+  observed = data$bc_target_bayes,
+  predicted = y_pred3
+)
+
+plot3 <- ggplot(ppc_data3, aes(x = observed)) +
+  geom_density(aes(y = ..density..), color = "darkblue", fill = "darkblue", alpha = 0.3) +
+  geom_density(aes(x = predicted, y = ..density..), color = "lightblue", fill = "lightblue", alpha = 0.3) +
+  labs(title = "Posterior Predictive Check for the Improved Model",
+       x = "Crime Rate",
+       y = "Density") +
+  annotate("text", x = 0.7, y = 3, label = "Observed Data", color = "darkblue", hjust = 0) +
+  annotate("text", x = 0.7, y = 3.2, label = "Model Predictions", color = "lightblue", hjust = 0) +
+  theme_minimal()
+
+print(plot3)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_improved <- c("beta", "sd_state", "state_effect")
+
+jags_model_improved <- jags.model("model_string_improved.jags", data = jags_improved, inits = inits_improved, n.chains = 3)
+update(jags_model_improved, 1000)  # Burn-in
+samples_improved <- coda.samples(jags_model_improved, variable.names = params_improved, n.iter = 5000)
+
+# DIC computation
+dic_improved <- dic.samples(jags_model_improved, n.iter = 5000)
+mean_deviance_improved <- mean(dic_improved$deviance)
+mean_penalty_improved <- mean(dic_improved$penalty)
+dic_improved <- mean_deviance_improved + mean_penalty_improved
+print(paste("Single DIC value for the improved 2nd model:", dic_improved)) 
+```
+
+The analysis of the *posterior predictive checks* and *DIC scores*
+demonstrates a clear improvement in model performance from the base
+model to the final model. The final model's predictions align more
+closely with the observed data, and its WAIC score is the lowest,
+indicating it provides the best fit while appropriately managing model
+complexity. This suggests that the refinements made in the final model,
+such as including interaction terms and potentially non-linear
+relationships, have significantly enhanced its predictive accuracy for
+crime rates.
+
+#### **Convergence diagnostic**
+
+***Traceplot***
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+samples_matrix3 <- as.matrix(samples_ppc3)
+all_params3 <- colnames(samples_matrix3)
+params3 <- all_params3[grepl("beta|sd_state|state_effect", all_params3)]
+
+for (i in seq(1, length(params3), by = 4)) {
+  end <- min(i + 3, length(params3))
+  param_subset <- params3[i:end]
+  traceplot <- mcmc_trace(as.mcmc(samples_matrix3), pars = param_subset)
+  print(traceplot)
+}
+```
+
+***Density plot***
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+density_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")
+for (i in seq(1, length(params3), by = 4)) {
+  end <- min(i + 3, length(params3))
+  param_subset <- params3[i:end]
+  density_plot <- mcmc_dens_overlay(samples_ppc3, pars = param_subset) + 
+    scale_color_manual(values = density_colors) +
+    ggtitle("Density Plots")
+  print(density_plot)
+}
+```
+
+The diagnostic plots for the final model provide valuable insights into
+the convergence and reliability of parameter estimates. The **trace
+plots** generally indicate good mixing and stationarity, with chains
+fluctuating around a stable mean and showing no evident trends. However,
+some betas display less reliable convergence, suggesting instability in
+their estimates. The 95% credible intervals remain relatively narrow and
+consistent across most chains, reinforcing the assessment of convergence
+for the majority of parameters.
+
+The **density plots** support these findings, revealing that the
+posterior distributions have generally converged well, as evidenced by
+overlapping density curves for each chain. While most parameters show
+smooth, unimodal distributions, some betas exhibit less definitive
+shapes, indicating that further examination may be necessary.
+
+Overall, the diagnostic plots indicate a strong performance for most
+parameters, but careful attention should be directed toward those with
+less reliable convergence, as they could impact the robustness of the
+model's conclusions.
+
+#### **Error check**
+
+Then after the convergence diagnostics we check the accuracy of our
+Bayesian hierarchical model with the following statistics :
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+samples_matrix3 <- as.matrix(samples_improved)
+posterior_samples3 <- as_draws_df(samples_matrix3)
+
+summary_stats3 <- summarize_draws(posterior_samples3, 
+                                 "mean", "median", "sd", "mad", "mcse_mean", "mcse_sd", "rhat", "ess_bulk", "ess_tail")
+
+print(summary_stats3, n = Inf)
+```
+
+The summary of the Bayesian model parameters reveals key insights into
+the relationships between the predictors and the target variable. The
+**mean** coefficient for **`Families_2Parents`** (beta[2]) is
+approximately 0.252, indicating a positive association with the target,
+while **`Employed`** (beta[1]) has a mean of about -0.055, suggesting a
+slight negative relationship.
+
+The **standard deviations (sd)** reflect the precision of these
+estimates. For instance, **`Employed`** has a low sd of 0.019,
+indicating high precision, whereas **`Families_2Parents`** has a higher
+sd of 0.202, reflecting more variability.
+
+**Monte Carlo Standard Error (MCSE)** values are low across parameters,
+with **`Employed`** having an MCSE of 0.000849, reinforcing confidence
+in the estimates. The **R-hat values**, close to 1 for most
+coefficients, indicate good convergence of the MCMC chains, suggesting
+stable posterior distributions.
+
+In summary, this Bayesian model shows reliable estimates and
+convergence, enhancing understanding of covariate relationships.
+However, variability in estimates for **`Families_2Parents`** and
+**`Employed`** suggests a need for further investigation to validate the
+model's conclusions.
+
+### Frequentist Analysis
+
+#### **GLMM (Generalized Linear Mixed Model)**
+
+For the frequentist analysis, we will use a Generalized Linear Mixed
+Model (GLMM). This model is suitable because, like the Bayesian
+hierarchical model, it can handle nested or grouped data and incorporate
+random effects to account for variability between different levels of
+the hierarchy. Using a GLMM allows for a direct comparison with the
+Bayesian approach, enhancing the robustness of the analysis of the
+influence of social norms and community interactions on crime rates.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+data$log_Below_Poverty = log(1 + abs(data$Below_Poverty))
+data$log_Median_Income = log(1 + abs(data$Median_Income))
+data$Illegitimate_Births_Welfare_Public_Assist = data$Illegitimate_Births * data$Welfare_Public_Assist
+data$log_Median_Below_Poverty = data$log_Median_Income * data$log_Below_Poverty
+data$Large_Families_log_Below_Poverty = data$Large_Families * data$log_Below_Poverty
+data$Welfare_log_Below_Poverty = data$Welfare_Public_Assist * data$log_Below_Poverty
+data$Teen_2Par_log_Below_Poverty = data$Teen_2Par * data$log_Below_Poverty
+
+glmmTMB_model <- glmmTMB(
+  bc_target_bayes ~ log_Below_Poverty +
+           Illegitimate_Births +
+           Large_Families +
+           Inc_from_inv +
+           log_Median_Income +
+           Families_2Parents +
+           Teen_2Par +
+           Working_mom +
+           Welfare_Public_Assist +
+           Illegitimate_Births_Welfare_Public_Assist +
+           log_Median_Below_Poverty +
+           Large_Families_log_Below_Poverty +
+           Welfare_log_Below_Poverty +
+           Teen_2Par_log_Below_Poverty + 
+           (1 | State),  # Random effect for state to match the JAGS model
+  data = data,
+  family = beta_family()
+)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+summary(glmmTMB_model)
+```
+
+The model identifies `Families_2Parents`, `Illegitimate_Births`,
+`Inc_from_inv`, `Working_mom`, and the interaction term
+`Illegitimate_Births_Welfare_Public_Assist` as significant predictors of
+the target variable. `Families_2Parents` has a strong negative effect,
+indicating that higher proportions of two-parent families are associated
+with a decrease in the target variable. `Illegitimate_Births` shows a
+strong positive association, while `Inc_from_inv` and `Working_mom` both
+have significant negative effects. Additionally, the interaction term
+`Illegitimate_Births_Welfare_Public_Assist` suggests that higher levels
+of welfare assistance in conjunction with illegitimate births are
+associated with a decrease in the target.
+
+The model includes other income and demographic variables (such as
+`Large_Families`, `log_Below_Poverty`, and various interaction terms),
+but these are not statistically significant, indicating that they do not
+have a strong or consistent impact on the target variable in this
+dataset.
+
+The random effect for `State` shows a moderate variance, suggesting that
+there are differences in baseline levels across states, which justifies
+the inclusion of state-level random effects to account for this
+variability.
+
+Based on the summary of the model, the relatively high dispersion
+parameter (at 10.6) and the presence of some predictors with large
+standard errors suggest the need for further diagnostics for
+zero-inflation and overdispersion. Conducting these tests will help
+ensure that the model is appropriately specified and that the parameter
+estimates are reliable.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+res = simulateResiduals(fittedModel = glmmTMB_model)
+par(mfrow = c(1,2))
+testDispersion(res)
+testZeroInflation(res)
+```
+
+Given that both tests indicate that the model does not suffer from
+zero-inflation or overdispersion, the current model specification
+appears appropriate for the data.
+
+Subsequently, a plot of observed versus predicted crime rates was
+created to evaluate the model's predictive performance:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow = c(1,1))
+data$predicted_glmmTMB = predict(glmmTMB_model, type = "response")
+
+ggplot(data, aes(x = target, y = predicted_glmmTMB)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(title = "GLMMTMB Predictions vs Observed",
+       x = "Observed Crime Rate",
+       y = "Predicted Crime Rate") +
+  theme_minimal()
+```
+
+The plot shows that the GLMMTMB model captures the general trend in the crime rate data, with predicted values generally increasing as observed crime rates rise. However, there is noticeable dispersion around the line of equality (the red line), especially at higher crime rates, where predictions tend to be more variable. This suggests that while the model provides a reasonable fit overall, it may benefit from further refinement to improve accuracy for cases with higher observed crime
+rates. Addressing this variability could enhance the model’s predictive
+performance in those areas.
+
+Now we can compare the corresponding Bayesian model through the **Mean Absolute Error (MAE)** and **Root Mean Square Error (RMSE)* :
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+predictions_all <- predict(glmmTMB_model, newdata = data, type = "response")
+true_values_all <- data$bc_target_bayes
+
+#RMSE and MAE 
+rmse_glmmTMB_all <- sqrt(mean((predictions_all - true_values_all)^2))
+mae_glmmTMB_all <- mean(abs(predictions_all - true_values_all))
+
+cat("RMSE for the glmmTMB model:", rmse_glmmTMB_all, "\n")
+cat("MAE for the glmmTMB model:", mae_glmmTMB_all, "\n")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+params_ppc <- c("beta", "sd_state", "state_effect", "y_rep")
+jags_model_ppc3 <- jags.model("model_improved_ppc.jags", data = jags_data, inits = inits, n.chains = 3)
+update(jags_model_ppc3, 500)
+
+
+samples_ppc3 <- coda.samples(jags_model_ppc3, variable.names = params_ppc, n.iter = 2000)
+y_rep_samples_matrix <- as.matrix(samples_ppc3)
+y_rep_samples <- y_rep_samples_matrix[, grep("y_rep", colnames(y_rep_samples_matrix))]
+posterior_predictions <- colMeans(y_rep_samples)
+observed_values <- data$bc_target_bayes
+
+#RMSE and MAE
+rmse_jags <- sqrt(mean((posterior_predictions - observed_values)^2))
+mae_jags <- mean(abs(posterior_predictions - observed_values))
+
+cat("RMSE for JAGS model:", rmse_jags, "\n")
+cat("MAE for JAGS model:", mae_jags, "\n")
+```
+
+The **Root Mean Square Error (RMSE)** and **Mean Absolute Error (MAE)** are commonly used metrics to evaluate how closely a model’s predictions
+align with actual values, with RMSE being more sensitive to larger
+deviations. For the Bayesian model implemented in JAGS, the RMSE is
+approximately 0.1239, and the MAE is about 0.0927. These values suggest
+that the model’s predictions are generally close to the observed data,
+with a typical prediction error of around 0.0927. The slightly higher
+RMSE value reflects a few instances of larger errors, though these
+remain minimal.
+
+In comparison, the frequentist `glmmTMB` model has an RMSE of
+approximately 0.1233 and an MAE of 0.0954. This performance is also
+strong, with an RMSE that is marginally lower than the JAGS model and an
+MAE that is slightly higher. These values suggest that the `glmmTMB`
+model’s predictions are similarly accurate and only very slightly less
+consistent than the Bayesian model.
+
+The small differences in these metrics indicate that both models handle
+the data well, with only minor distinctions in predictive accuracy. The
+JAGS model shows a slight advantage in MAE, which points to a somewhat
+smaller average error per prediction, whereas the `glmmTMB` model’s
+marginally lower RMSE suggests that it may be slightly more robust
+against larger deviations.
+
+In summary, both models achieve nearly identical predictive performance,
+with the JAGS model having a very slight edge in average error
+consistency (MAE) and the `glmmTMB` model performing slightly better on
+larger deviations (RMSE). Given this close performance, either model
+would be a reasonable choice, allowing for selection based on specific
+analytical needs or preferences, such as the Bayesian model’s ability to
+incorporate prior information or the familiarity of the frequentist
+approach.
+
+**Model validation**
+
+The next logical step is to check whether the model violates any assumptions. This is a crucial part of validating the model to ensure that the inferences and predictions are reliable.<br> Here are the key assumptions to check for a *GLMM (Generalized Linear Mixed Model)*:
+
+1.  *Homoscedasticity*
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+residuals_glmmTMB = residuals(glmmTMB_model, type = "pearson")
+fitted_glmmTMB = predict(glmmTMB_model, type = "response")
+
+ggplot(data, aes(x = fitted_glmmTMB, y = residuals_glmmTMB)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residuals vs Fitted Values",
+       x = "Fitted Values",
+       y = "Residuals") +
+  theme_minimal()
+```
+
+2.  *Normality of residuals*
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+qqnorm(residuals(glmmTMB_model))
+qqline(residuals(glmmTMB_model))
+```
+
+3.  *Linearity*
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot(residuals(glmmTMB_model) ~ fitted(glmmTMB_model), main = "Residuals vs. Fitted Values for GLMMTMB Model", 
+     xlab = "Fitted", ylab = "Residuals")
+```
+
+The diagnostic plots suggest that the `glmmTMB` model generally fits the data well, with assumptions largely being met.
+
+In the **Residuals vs. Fitted Values plot**, residuals are symmetrically
+scattered around zero, indicating that the model captures the main data
+structure effectively. There is a slight increase in residual spread at
+higher fitted values, suggesting **mild heteroscedasticity**. This
+pattern is not extreme and may not require any adjustment, though a
+response transformation or robust standard errors could be considered if
+needed.
+
+The **Q-Q plot** shows that residuals mostly follow the normality line,
+suggesting that the assumption of normality is broadly met. Minor
+deviations at the tails indicate a few outliers, but these are not
+substantial enough to impact the model's validity significantly.
+
+In summary, the model assumptions are reasonably well met. The slight
+heteroscedasticity and minor tail deviations are not severe, so the
+current model should be adequate. Further adjustments would only be
+necessary if you aim for a more refined fit, but they may yield only
+minimal improvement.
+
+### **Comparison of Bayesian and Frequentist Approaches**
+
+In this analysis, both a **Bayesian hierarchical model** (implemented in
+JAGS) and a **frequentist Generalized Linear Mixed Model (GLMM)** (using
+`glmmTMB`) were developed to assess the effects of socio-economic
+factors on state-level crime rates. Each approach offers distinct
+advantages suited to the dataset but also shares a limitation in
+capturing all influences on crime rates, likely due to unobserved
+factors or latent variables.
+
+The **Bayesian model** demonstrates flexibility by incorporating prior
+information, which is particularly advantageous in managing data
+sparsity and noise. Its hierarchical structure allows for nuanced
+modeling of between-state variability, and posterior predictive checks
+indicated a strong overall fit to the observed data. However, further
+examination of density plots and residual patterns revealed systematic
+variations that the model could not entirely capture, suggesting the
+potential for hidden sub-group differences or unobserved heterogeneity.
+These findings indicate that a Bayesian **mixture model** might be
+beneficial, as it would enable better handling of multi-modal data,
+where certain socio-economic factors may influence crime differently
+across sub-populations.
+
+In contrast, the **frequentist GLMM** avoids reliance on prior
+distributions, allowing for straightforward estimation and
+interpretation, which is practical in many applied settings. This model
+also showed a robust fit, with diagnostic checks revealing only mild
+issues in residual normality and heteroscedasticity. However, similar to
+the Bayesian model, the frequentist approach displayed some instability
+when predicting higher crime rates, which hints at the existence of
+latent factors not accounted for in the dataset. As with the Bayesian
+model, a frequentist mixture model could potentially address this by
+isolating unobserved sub-populations within the data.
+
+Both models suggest that the dataset may not follow a single, unified
+distribution, likely due to the influence of sub-groups with distinct
+socio-economic characteristics that affect crime differently. This
+latent structure could represent community-level socio-cultural dynamics
+or unique structural inequalities, which remain unmeasured. Thus, both
+Bayesian and frequentist approaches would benefit from a **mixture
+model** to effectively capture multi-modal data patterns and unobserved
+sub-group effects.
+
+### **Conclusion**
+
+In summary, while both the Bayesian and frequentist models offer
+valuable insights into the socio-economic determinants of crime, their
+inability to fully capture the complexity of the data points to an
+underlying multi-modal structure. The presence of unobserved, latent
+factors likely drives this multi-modality, reflecting socio-cultural or
+structural differences between communities that impact crime rates. A
+**mixture model** would allow each latent group’s unique characteristics
+to be incorporated, enhancing predictive accuracy and interpretability
+in both modeling frameworks.
+
+In the Bayesian setting, a mixture model could leverage the hierarchical
+structure to account for inter-state variability while distinguishing
+latent sub-populations. For the frequentist approach, this addition
+would yield interpretable parameters for each sub-group, thereby
+improving the model’s performance on observations with high crime rates.
+
+Overall, both models, by incorporating a mixture framework, would more
+accurately reflect the dataset’s underlying complexity and provide a
+more comprehensive understanding of the socio-economic and potentially
+cultural determinants driving crime across different communities.
