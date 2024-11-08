@@ -1,0 +1,48 @@
+
+model {
+  # Likelihood for each observation
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                    beta[2] * YoungKids_2Par[i] +
+                    beta[3] * Teen_2Par[i] +
+                    beta[4] * Employed[i] +
+                    beta[5] * Below_Poverty[i] +
+                    beta[6] * Degree_BS_Or_More[i] +
+                    beta[7] * Inc_from_inv[i] +
+                    beta[8] * Speak_Eng_Only[i] +
+                    beta[9] * Illegitimate_Births[i] +
+                    beta[10] * Large_Families[i] +
+                    beta[11] * Poor_English[i] +
+                    beta[12] * Families_2Parents[i] +
+                    beta[13] * Working_mom[i] +
+                    beta[14] * Median_Income[i] +
+                    beta[15] * Unemployment[i] +
+                    beta[16] * Welfare_Public_Assist[i] + 
+                    state_effect[State[i]]  # Random effect for State
+
+    # Compute mu[i] from the logit transformation with capping
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i]
+
+    # Beta distribution for the response variable, with clamped phi[i]
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid extremely small values
+    
+    # Prior for phi[i] - gamma distribution for each observation
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for beta coefficients
+  for (j in 1:16) {
+    beta[j] ~ dnorm(0, 1)  # Normal prior for the fixed effects
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)  # Random effect for states
+  }
+
+  # Hyperparameters for state random effects
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state
+  tau_state <- pow(sd_state, -2)  # Convert to precision
+}
+
