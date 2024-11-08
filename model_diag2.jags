@@ -1,0 +1,53 @@
+
+model {
+  for (i in 1:N) {
+    # Linear predictor with logit transformation
+    logit[i] <- beta[1] + 
+                 beta[2] * Employed[i] +
+                 beta[3] * Below_Poverty[i] +
+                 beta[4] * Illegitimate_Births[i] +
+                 beta[5] * Large_Families[i] +
+                 beta[6] * Inc_from_inv[i] +
+                 beta[7] * Median_Income[i] +
+                 beta[8] * Families_2Parents[i] +
+                 beta[9] * YoungKids_2Par[i] +
+                 beta[10] * Teen_2Par[i] +
+                 beta[11] * Working_mom[i] +
+                 beta[12] * Welfare_Public_Assist[i] +
+                 # Interaction terms
+                 beta[13] * Employed[i] * Below_Poverty[i] +
+                 beta[14] * Illegitimate_Births[i] * Below_Poverty[i] +
+                 beta[15] * Illegitimate_Births[i] * Welfare_Public_Assist[i] +
+                 beta[16] * Large_Families[i] * Below_Poverty[i] +
+                 beta[17] * Inc_from_inv[i] * Median_Income[i] +
+                 beta[18] * Median_Income[i] * Below_Poverty[i] +
+                 beta[19] * Employed[i] * Welfare_Public_Assist[i] +
+                 beta[20] * YoungKids_2Par[i] * Below_Poverty[i] +
+                 beta[21] * Teen_2Par[i] * Below_Poverty[i] +
+                 state_effect[State[i]]  # Random effect for state
+
+    # Compute mu[i] from the logit transformation
+    mu[i] <- max(1e-5, min(exp(logit[i]) / (1 + exp(logit[i])), 1 - 1e-5))  # Bound mu[i] between 1e-5 and 1 - 1e-5
+
+    # Beta distribution for the response variable, with clamped phi[i]
+    bc_target_bayes[i] ~ dbeta(mu[i] * max(phi[i], 1e-3), (1 - mu[i]) * max(phi[i], 1e-3))  # Clamp phi[i] to avoid extremely small values
+    
+    # Prior for phi[i] - gamma distribution for each observation (normale troncata/log-normale)
+    phi[i] ~ dgamma(1, 0.01)  # Adjusted gamma prior to avoid extremely small values
+  }
+
+  # Priors for coefficients
+  for (j in 1:21) {
+    beta[j] ~ dnorm(0, 1)  # Normal prior
+  }
+
+  # Random effects for states
+  for (s in 1:S) {
+    state_effect[s] ~ dnorm(0, tau_state)
+  }
+
+  # Hyperparameters
+  sd_state ~ dgamma(1, 1)  # Gamma prior for sd_state to ensure positivity
+  tau_state <- pow(sd_state, -2)
+}
+
